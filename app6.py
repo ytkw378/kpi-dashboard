@@ -307,10 +307,18 @@ if uploaded_file is not None:
                 fig_scatter.update_layout(
                     xaxis_title=x_label, yaxis_title=y_label, legend_title="施設名", font=dict(family="Segoe UI")
                 )
+                # --- ここから追加・修正 ---
+                # 縦方向の目盛り線（X軸のグリッド）と横方向の目盛り線（Y軸のグリッド）を明示的にONにし、色を指定
+                fig_scatter.update_xaxis(showgrid=True, gridcolor='LightGray')
+                fig_scatter.update_yaxis(showgrid=True, gridcolor='LightGray')
+                
+                # 金額の場合のカンマ区切り設定（update_xaxis/yaxisに書き換えて安全に適用）
                 if get_unit(x_item) == "円":
-                    fig_scatter.update_layout(xaxis=dict(tickformat=",.0f"))
+                    fig_scatter.update_xaxis(tickformat=",.0f")
                 if get_unit(y_item) == "円":
-                    fig_scatter.update_layout(yaxis=dict(tickformat=",.0f"))
+                    fig_scatter.update_xaxis(tickformat=",.0f") # 縦軸の場合は update_yaxis
+                    fig_scatter.update_yaxis(tickformat=",.0f")
+                # --- ここまで ---
 
                 st.plotly_chart(fig_scatter, use_container_width=True)
                 
