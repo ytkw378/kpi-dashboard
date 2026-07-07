@@ -5,13 +5,13 @@ import plotly.express as px
 
 # ページの設定
 st.set_page_config(
-    page_title="病院経営KPIダッシュボード",
+    page_title="病院経営DB",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-st.title("🏥 病院経営 KPIダッシュボード")
-st.write("各施設の財務データ（19項目）から、収益性・効率性・安全性の指標を多角的に比較分析します。")
+st.title("🏥 病院経営指標ダッシュボード")
+st.write("財務データ（19項目）から、収益性・効率性・安全性の指標を多角的に比較分析します。")
 
 # --- 定義データ群 ---
 
@@ -98,7 +98,7 @@ def get_axis_label(item_name):
 def select_item_ui(key_prefix, title_text, default_cat_idx=0, default_item_idx=0):
     """カテゴリ→詳細項目の2段階選択を行うUIコンポーネント"""
     st.markdown(f"**{title_text}**")
-    categories_list = list(kpi_categories.keys()) + ["財務データ(勘定科目)"]
+    categories_list = list(kpi_categories.keys()) + ["財務データ"]
     
     col_c, col_i = st.columns([1, 2])
     with col_c:
@@ -116,7 +116,7 @@ def select_item_ui(key_prefix, title_text, default_cat_idx=0, default_item_idx=0
 
 
 # --- サイドバーの設定 ---
-st.sidebar.header("データのアップロード と 設定")
+st.sidebar.header("財務データのアップロード と 設定")
 
 uploaded_file = st.sidebar.file_uploader(
     "エクセルファイルをアップロード（.xlsx）", 
@@ -142,7 +142,7 @@ if uploaded_file is not None:
         # --- アップロードデータの要約 ---
         st.subheader("📋 アップロードデータの要約")
         with st.expander("🔍 勘定科目ごとのデータ件数を確認する (クリックで開閉)", expanded=False):
-            st.write("19項目の登録件数分布です。0件（ピンク色）の科目はデータが不足しています。")
+            st.write("科目ごとの登録件数分布です。0件の科目は赤色で表示しています。")
             summary_pivot = raw_df.pivot_table(
                 index="勘定科目", columns="施設名", values="金額", aggfunc="count", fill_value=0
             )
@@ -191,7 +191,7 @@ if uploaded_file is not None:
 
         # --- メイン表示エリア ---
         tab_trend_view, tab_scatter_view = st.tabs([
-            "📈 単一指標の時系列推移", 
+            "📈 単一経営指標の時系列推移", 
             "📊 2指標の相関分析（マトリクス散布図）"
         ])
 
@@ -205,9 +205,9 @@ if uploaded_file is not None:
             selected_trend_item = select_item_ui("trend", "▼ グラフに表示する指標・項目を選択", default_cat_idx=0, default_item_idx=4)
             
             if selected_trend_item in all_kpis:
-                st.info(f"**計算式:** `{all_kpis[selected_trend_item]['formula']}`")
+                st.info(f"**計算式 : ** `{all_kpis[selected_trend_item]['formula']}`")
 
-            tab_graph, tab_data = st.tabs(["📊 比較グラフ", "📝 データ一覧"])
+            tab_graph, tab_data = st.tabs(["📊 時系列グラフ", "📝 データ一覧"])
 
             with tab_graph:
                 filtered_df["年度_str"] = filtered_df["年度"].astype(str)
@@ -219,7 +219,7 @@ if uploaded_file is not None:
                 
                 fig = px.line(
                     trend_plot_df, x="年度_str", y=selected_trend_item, color="施設名", markers=True,
-                    title=f"{selected_trend_item} の年度推移比較",
+                    title=f"【時系列】{selected_trend_item} の年度推移",
                     labels={"年度_str": "年度", selected_trend_item: get_axis_label(selected_trend_item)},
                     hover_data={"年度_str": True, hover_col: True, selected_trend_item: False},
                     template="plotly_white"
@@ -258,7 +258,7 @@ if uploaded_file is not None:
         # ====================================================
         with tab_scatter_view:
             st.subheader("2指標相関分析")
-            st.write("縦軸と横軸にそれぞれ指標(KPI)や勘定科目を割り当て、各病院の分布状況を分析します。")
+            st.write("縦軸と横軸にそれぞれ指標や科目を割り当て、各病院の分布状況を分析します")
 
             col_x, col_y = st.columns(2)
             with col_x:
@@ -315,7 +315,7 @@ if uploaded_file is not None:
                 st.plotly_chart(fig_scatter, use_container_width=True)
                 
                 # トグルボタンでデータ一覧表示
-                with st.expander("📝 このプロットのデータ一覧を確認する", expanded=False):
+                with st.expander("📝 データ一覧", expanded=False):
                     sub_display_df = valid_scatter_df[["年度", "施設名", x_item, y_item]].copy()
                     sub_display_df[x_item] = sub_display_df[x_item].apply(lambda v: format_value(v, x_item))
                     sub_display_df[y_item] = sub_display_df[y_item].apply(lambda v: format_value(v, y_item))
