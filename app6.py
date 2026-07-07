@@ -205,7 +205,7 @@ if uploaded_file is not None:
             selected_trend_item = select_item_ui("trend", "▼ グラフに表示する指標・項目を選択", default_cat_idx=0, default_item_idx=4)
             
             if selected_trend_item in all_kpis:
-                st.info(f"**計算式 : ** `{all_kpis[selected_trend_item]['formula']}`")
+                st.info(f"**計算式** :  `{all_kpis[selected_trend_item]['formula']}`")
 
             tab_graph, tab_data = st.tabs(["📊 時系列グラフ", "📝 データ一覧"])
 
