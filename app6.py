@@ -104,7 +104,7 @@ def select_item_ui(key_prefix, title_text, default_cat_idx=0, default_item_idx=0
     with col_c:
         cat = st.selectbox("大分類 (カテゴリ)", categories_list, index=default_cat_idx, key=f"{key_prefix}_cat")
     with col_i:
-        if cat == "財務データ(勘定科目)":
+        if cat == "財務データ":
             options = required_subjects
         else:
             options = list(kpi_categories[cat].keys())
