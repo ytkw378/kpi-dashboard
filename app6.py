@@ -155,7 +155,7 @@ if uploaded_file is not None:
 
         def select_item_ui(key_prefix, title_text, default_cat_idx=0, default_item_idx=0, allow_none=False):
             st.markdown(f"<span style='font-size:13px; font-weight:bold;'>{title_text}</span>", unsafe_allow_html=True)
-            categories_list = list(kpi_categories.keys()) + ["財務データ(勘定科目)", "機能データ"]
+            categories_list = list(kpi_categories.keys()) + ["財務データ", "機能データ"]
             if allow_none:
                 categories_list = ["(選択なし)"] + categories_list
                 default_cat_idx = default_cat_idx + 1 if default_cat_idx is not None else 0
