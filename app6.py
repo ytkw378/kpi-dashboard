@@ -7,7 +7,7 @@ from plotly.subplots import make_subplots
 
 # ページの設定
 st.set_page_config(
-    page_title="病院経営ダッシュボード",
+    page_title="病院経営KPIダッシュボード",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -58,7 +58,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- サイドバーの固定基本表示 ---
-st.sidebar.markdown('<div class="sidebar-title">🏥 病院経営 ダッシュボード</div>', unsafe_allow_html=True)
+st.sidebar.markdown('<div class="sidebar-title">🏥 病院経営 KPIダッシュボード</div>', unsafe_allow_html=True)
 st.sidebar.markdown('<div class="sidebar-desc">Excelから定義マスターと実績データを一括読み込みし、多角的な経営分析を行います。</div>', unsafe_allow_html=True)
 st.sidebar.header("データのアップロード と 設定")
 
@@ -155,7 +155,7 @@ if uploaded_file is not None:
 
         def select_item_ui(key_prefix, title_text, default_cat_idx=0, default_item_idx=0, allow_none=False):
             st.markdown(f"<span style='font-size:13px; font-weight:bold;'>{title_text}</span>", unsafe_allow_html=True)
-            categories_list = list(kpi_categories.keys()) + ["財務データ", "機能データ"]
+            categories_list = list(kpi_categories.keys()) + ["財務データ(勘定科目)", "機能データ"]
             if allow_none:
                 categories_list = ["(選択なし)"] + categories_list
                 default_cat_idx = default_cat_idx + 1 if default_cat_idx is not None else 0
@@ -167,7 +167,7 @@ if uploaded_file is not None:
                 with col_i: st.selectbox("詳細", ["-"], disabled=True, key=f"{key_prefix}_item", label_visibility="collapsed")
                 return None
             with col_i:
-                options = financial_subjects if cat == "財務データ" else functional_subjects if cat == "機能データ" else list(kpi_categories[cat].keys())
+                options = financial_subjects if cat == "財務データ(勘定科目)" else functional_subjects if cat == "機能データ" else list(kpi_categories[cat].keys())
                 safe_idx = default_item_idx if default_item_idx < len(options) else 0
                 item = st.selectbox("詳細項目", options, index=safe_idx, key=f"{key_prefix}_item", label_visibility="collapsed")
             return item
@@ -210,24 +210,25 @@ if uploaded_file is not None:
         selected_facilities = st.sidebar.multiselect("比較する施設を選択", options=all_facilities, default=all_facilities)
         filtered_df = df_pivot[df_pivot["施設名"].isin(selected_facilities)].copy()
 
-        # Excelの数式（ロジック文字列）を安全に実行してKPIを一括計算
+        # 【★ここを修正★】Excelの数式（ロジック文字列）を安全に実行してKPIを一括計算
         for kpi_name, kpi_info in all_kpis.items():
             try:
-                filtered_df[kpi_name] = eval(kpi_info["calc_str"])
+                # eval内部の 'df' に filtered_df を、'np' に numpy を割り当てて計算を成功させます
+                filtered_df[kpi_name] = eval(kpi_info["calc_str"], {"df": filtered_df, "np": np})
             except Exception as eval_e:
                 filtered_df[kpi_name] = np.nan
 
-        # 5. 【修正・復活】ラジオボタンによる「時系列」と「散布図」の切り替えスイッチ
+        # 5. ラジオボタンによる「時系列」と「散布図」の切り替えスイッチ
         view_mode = st.radio(
             "📊 ダッシュボード表示ビュー切り替え",
-            ["📈 ２指標の時系列比較", "📊 ２指標相関分析"],
+            ["📈 ２指標の時系列比較 (ダブルY軸・右凡例集約型)", "📊 ２指標相関分析（マトリクス散布図）"],
             horizontal=True
         )
 
         # ====================================================
         # ビュー1: ２指標の時系列比較
         # ====================================================
-        if view_mode == "📈 ２指標の時系列比較":
+        if view_mode == "📈 ２指標の時系列比較 (ダブルY軸・右凡例集約型)":
             col_sel1, col_sel2 = st.columns(2)
             with col_sel1:
                 selected_trend_item1 = select_item_ui("trend1", "▼ 指標1（主軸：実線）を選択", default_cat_idx=0, default_item_idx=0)
