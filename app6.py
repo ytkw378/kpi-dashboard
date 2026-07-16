@@ -12,7 +12,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- 一画面化のためのCSS最適化 ---
+# --- 一画面化とUI最適化のためのCSS ---
 st.markdown("""
 <style>
     /* 画面全体の上下左右余白を極限まで詰めて1画面に収める */
@@ -24,7 +24,7 @@ st.markdown("""
     }
     /* サイドバー上部タイトルの装飾 */
     .sidebar-title {
-        font-size: 18px !important;
+        font-size: 16px !important;
         font-weight: bold;
         color: #1e3a8a;
         margin-bottom: 5px;
@@ -36,13 +36,13 @@ st.markdown("""
         line-height: 1.4;
         margin-bottom: 15px;
     }
-    /* 不要な隙間を削る */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-    }
-    .stTabs [data-baseweb="tab"] {
-        padding: 6px 12px !important;
+    /* サイドバー内のフォントを全体的に小さくする */
+    [data-testid="stSidebar"] * {
         font-size: 13px !important;
+    }
+    /* フォームやセレクトボックス間の余白を小さく */
+    .stSelectbox {
+        margin-bottom: -10px !important;
     }
     div[data-testid="stExpander"] {
         margin-bottom: 5px !important;
@@ -50,9 +50,11 @@ st.markdown("""
     div[data-testid="stHorizontalBlock"] {
         gap: 10px !important;
     }
-    /* フォームやセレクトボックス間の余白を小さく */
-    .stSelectbox {
-        margin-bottom: -10px !important;
+    /* ラジオボタン（スイッチ）のデザイン調整 */
+    div[role="radiogroup"] {
+        margin-bottom: 10px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid #e5e7eb;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -289,9 +291,7 @@ all_kpis = {}
 for cat, kpis in kpi_categories.items():
     all_kpis.update(kpis)
 
-
 # --- 共通ユーティリティ関数 ---
-
 def get_unit(item_name):
     """項目名から適切な単位（%, 回, か月, 日, 人, 円）を判定して返す"""
     if item_name in all_kpis:
@@ -343,7 +343,6 @@ def select_item_ui(key_prefix, title_text, default_cat_idx=0, default_item_idx=0
     categories_list = list(kpi_categories.keys()) + ["財務データ(勘定科目)", "機能データ"]
     if allow_none:
         categories_list = ["(選択なし)"] + categories_list
-        # デフォルトインデックスを調整
         default_cat_idx = default_cat_idx + 1 if default_cat_idx is not None else 0
     
     col_c, col_i = st.columns([1, 1.8])
@@ -388,7 +387,6 @@ def display_kpi_explanation(item_name, label_text="💡 指標解説"):
         </div>
         """, unsafe_allow_html=True)
     else:
-        # 生データ（勘定科目、機能データ）の場合
         st.markdown(f"""
         <div style="background-color: #f9fafb; padding: 10px 14px; border-radius: 6px; border-left: 4px solid #6b7280; margin-top: 10px; margin-bottom: 5px;">
             <div style="font-weight: bold; color: #4b5563; font-size: 13px; margin-bottom: 4px;">📊 基礎データ解説: {item_name}</div>
@@ -397,8 +395,31 @@ def display_kpi_explanation(item_name, label_text="💡 指標解説"):
         </div>
         """, unsafe_allow_html=True)
 
+# ポップアップ用の関数（データ登録状況確認）
+@st.dialog("🔍 登録データ件数の確認", width="large")
+def show_data_summary_dialog(df_raw, req_subjects):
+    st.write("アップロードされたデータの科目ごとの登録件数（行数）を表示しています。緑色は正常、赤色はデータが存在しない科目です。")
+    summary_pivot = df_raw.pivot_table(
+        index="勘定科目", columns="施設名", values="金額", aggfunc="count", fill_value=0
+    )
+    for sub in req_subjects:
+        if sub not in summary_pivot.index:
+            summary_pivot.loc[sub] = 0
+    
+    summary_pivot = summary_pivot.reindex(req_subjects + [idx for idx in summary_pivot.index if idx not in req_subjects])
+    
+    def color_missing_cells(val):
+        color = '#ffccd5' if val == 0 else '#e2f0d9'
+        return f'background-color: {color}; color: #333;'
+    
+    try:
+        styled_summary = summary_pivot.style.map(color_missing_cells)
+    except AttributeError:
+        styled_summary = summary_pivot.style.applymap(color_missing_cells)
+    
+    st.dataframe(styled_summary, use_container_width=True)
 
-# --- サイドバーの設定（タイトル・コメントを移動） ---
+# --- サイドバーの設定 ---
 st.sidebar.markdown('<div class="sidebar-title">🏥 病院経営 KPIダッシュボード</div>', unsafe_allow_html=True)
 st.sidebar.markdown('<div class="sidebar-desc">各施設の財務データおよび病院機能データから、収益性・効率性・安全性・稼働性・生産性を多角的に比較分析します。</div>', unsafe_allow_html=True)
 
@@ -409,7 +430,6 @@ uploaded_file = st.sidebar.file_uploader(
     type=["xlsx"],
     help="「年度」「施設名」「勘定科目」「金額」の4列を持つデータをアップロードしてください。"
 )
-
 
 # --- メインコンテンツ ---
 if uploaded_file is not None:
@@ -423,27 +443,9 @@ if uploaded_file is not None:
             
         raw_df["勘定科目"] = raw_df["勘定科目"].astype(str).str.strip()
         
-        # --- アップロードデータの要約 ---
-        with st.sidebar.expander("🔍 登録データ件数を確認する", expanded=False):
-            summary_pivot = raw_df.pivot_table(
-                index="勘定科目", columns="施設名", values="金額", aggfunc="count", fill_value=0
-            )
-            for sub in required_subjects:
-                if sub not in summary_pivot.index:
-                    summary_pivot.loc[sub] = 0
-            
-            summary_pivot = summary_pivot.reindex(required_subjects + [idx for idx in summary_pivot.index if idx not in required_subjects])
-            
-            def color_missing_cells(val):
-                color = '#ffccd5' if val == 0 else '#e2f0d9'
-                return f'background-color: {color}'
-            
-            try:
-                styled_summary = summary_pivot.style.map(color_missing_cells)
-            except AttributeError:
-                styled_summary = summary_pivot.style.applymap(color_missing_cells)
-            
-            st.dataframe(styled_summary, use_container_width=True)
+        # --- アップロードデータの要約（ボタン押下でポップアップ表示） ---
+        if st.sidebar.button("📊 登録データ件数を確認する"):
+            show_data_summary_dialog(raw_df, required_subjects)
 
         # 縦持ちから横持ちへの変換
         df_pivot = raw_df.pivot_table(
@@ -471,41 +473,37 @@ if uploaded_file is not None:
         for kpi_name, kpi_info in all_kpis.items():
             filtered_df[kpi_name] = kpi_info["calc"](filtered_df)
 
-        # --- メイン表示エリア ---
-        tab_trend_view, tab_scatter_view = st.tabs([
-            "📈 ２指標の時系列比較 (ダブルY軸対応)", 
-            "📊 ２指標相関分析（マトリクス散布図）"
-        ])
+        # --- ラジオボタンによる画面切り替えスイッチ ---
+        view_mode = st.radio(
+            "表示するグラフを選択",
+            ["📈 ２指標の時系列比較 (ダブルY軸対応)", "📊 ２指標相関分析（マトリクス散布図）"],
+            horizontal=True,
+            label_visibility="collapsed"
+        )
 
         # ====================================================
-        # タブ1: ２指標の時系列比較
+        # スイッチ1: ２指標の時系列比較
         # ====================================================
-        with tab_trend_view:
+        if view_mode == "📈 ２指標の時系列比較 (ダブルY軸対応)":
             col_sel1, col_sel2 = st.columns(2)
             with col_sel1:
-                # デフォルト: 収益性 > 1床当たり医業収益
                 selected_trend_item1 = select_item_ui("trend1", "▼ 指標1（主軸：実線）を選択", default_cat_idx=0, default_item_idx=9)
             with col_sel2:
-                # デフォルト: (選択なし)
                 selected_trend_item2 = select_item_ui("trend2", "▼ 指標2（第2軸：点線）を選択", default_cat_idx=None, default_item_idx=0, allow_none=True)
 
             filtered_df["年度_str"] = filtered_df["年度"].astype(str)
             trend_plot_df = filtered_df.sort_values(by="年度").copy()
             
-            # 各施設に固定の色を割り当てる（施設ごとに実線・点線の色を同一にするため）
             color_palette = px.colors.qualitative.Plotly
             unique_facilities = filtered_df["施設名"].unique().tolist()
             facility_colors = {fac: color_palette[i % len(color_palette)] for i, fac in enumerate(unique_facilities)}
 
-            # 2軸プロットの初期化
             fig = make_subplots(specs=[[{"secondary_y": True}]])
             
-            # 各施設をプロットに追加
             for fac in unique_facilities:
                 fac_df = trend_plot_df[trend_plot_df["施設名"] == fac]
                 color = facility_colors[fac]
                 
-                # 指標1（主軸・実線）
                 fig.add_trace(
                     go.Scatter(
                         x=fac_df["年度_str"], y=fac_df[selected_trend_item1],
@@ -518,7 +516,6 @@ if uploaded_file is not None:
                     secondary_y=False
                 )
                 
-                # 指標2（第2軸・点線）
                 if selected_trend_item2:
                     fig.add_trace(
                         go.Scatter(
@@ -542,11 +539,19 @@ if uploaded_file is not None:
                 font=dict(family="Segoe UI"),
                 xaxis_title="年度",
                 yaxis_title=get_axis_label(selected_trend_item1),
-                legend_title="凡例",
                 hovermode="x unified",
                 template="plotly_white",
-                height=380, # 縦幅を1画面向けに少し圧縮
-                margin=dict(l=40, r=40, t=40, b=40)
+                height=380,
+                # 凡例をグラフの上部に水平配置し、右側のラベルとの干渉を防ぐ
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.05,
+                    xanchor="right",
+                    x=1
+                ),
+                # 右側のマージンを少し広げて第2軸ラベルを見やすくする
+                margin=dict(l=40, r=60, t=20, b=40)
             )
             
             fig.update_xaxes(showgrid=True, gridcolor='LightGray')
@@ -554,9 +559,8 @@ if uploaded_file is not None:
             
             if selected_trend_item2:
                 fig.update_layout(yaxis2_title=get_axis_label(selected_trend_item2))
-                fig.update_yaxes(showgrid=False, secondary_y=True) # 2重に格子線を描画しないように右軸はグリッドOFF
+                fig.update_yaxes(showgrid=False, secondary_y=True)
             
-            # 金額の場合の桁カンマフォーマット
             if get_unit(selected_trend_item1) == "円":
                 fig.update_yaxes(tickformat=",.0f", secondary_y=False)
             if selected_trend_item2 and get_unit(selected_trend_item2) == "円":
@@ -564,7 +568,6 @@ if uploaded_file is not None:
 
             st.plotly_chart(fig, use_container_width=True)
 
-            # 指標の解説表示（指標1、指標2を並べて表示）
             col_desc1, col_desc2 = st.columns(2)
             with col_desc1:
                 display_kpi_explanation(selected_trend_item1, "💡 指標1解説")
@@ -572,17 +575,14 @@ if uploaded_file is not None:
                 if selected_trend_item2:
                     display_kpi_explanation(selected_trend_item2, "💡 指標2解説")
 
-
         # ====================================================
-        # タブ2: ２指標相関分析（散布図）
+        # スイッチ2: ２指標相関分析（散布図）
         # ====================================================
-        with tab_scatter_view:
+        else:
             col_sel_y, col_sel_x = st.columns(2)
             with col_sel_y:
-                # デフォルト: Y軸を左側に配置
                 y_item = select_item_ui("scatter_y", "▼ Y軸（縦軸）の設定", default_cat_idx=0, default_item_idx=0)
             with col_sel_x:
-                # デフォルト: X軸を右側に配置
                 x_item = select_item_ui("scatter_x", "▼ X軸（横軸）の設定", default_cat_idx=3, default_item_idx=0)
 
             col_years, col_empty = st.columns([2, 1])
@@ -617,9 +617,16 @@ if uploaded_file is not None:
                 )
 
                 fig_scatter.update_layout(
-                    xaxis_title=x_label, yaxis_title=y_label, legend_title="施設名", 
+                    xaxis_title=x_label, yaxis_title=y_label, 
                     font=dict(family="Segoe UI"), height=380,
-                    margin=dict(l=40, r=40, t=40, b=40)
+                    legend=dict(
+                        orientation="h",
+                        yanchor="bottom",
+                        y=1.05,
+                        xanchor="right",
+                        x=1
+                    ),
+                    margin=dict(l=40, r=40, t=20, b=40)
                 )
                 
                 fig_scatter.update_xaxes(showgrid=True, gridcolor='LightGray')
@@ -632,7 +639,6 @@ if uploaded_file is not None:
 
                 st.plotly_chart(fig_scatter, use_container_width=True)
                 
-                # 指標の解説を左右対称（Y軸・X軸）に配置して描画
                 col_exp_y, col_exp_x = st.columns(2)
                 with col_exp_y:
                     display_kpi_explanation(y_item, "💡 Y軸（縦軸）指標解説")
