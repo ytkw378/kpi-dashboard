@@ -16,7 +16,7 @@ st.set_page_config(
 st.markdown("""
 <style>
     .block-container {
-        padding-top: 1.0rem !important;
+        padding-top: 3.0rem !important; /* メッセージが見切れないように余白を拡張 */
         padding-bottom: 1.0rem !important;
         padding-left: 2.0rem !important;
         padding-right: 2.0rem !important;
@@ -34,7 +34,6 @@ st.markdown("""
         line-height: 1.4;
         margin-bottom: 15px;
     }
-    /* サイドバー内のフォントを全体的に小さく（操作性向上） */
     [data-testid="stSidebar"] * {
         font-size: 13px !important;
     }
@@ -47,7 +46,6 @@ st.markdown("""
     div[data-testid="stHorizontalBlock"] {
         gap: 10px !important;
     }
-    /* 切り替えスイッチエリアの明確化 */
     div[role="radiogroup"] {
         background-color: #f3f4f6;
         padding: 8px 12px;
@@ -68,7 +66,6 @@ uploaded_file = st.sidebar.file_uploader(
     help="data, subjects, kpi_categories, units の4シートを含むエクセルを選択してください。"
 )
 
-# ポップアップ用関数（データ登録状況確認）
 @st.dialog("🔍 登録データ件数の確認", width="large")
 def show_data_summary_dialog(df_raw, req_subjects):
     st.write("アップロードされたデータの科目ごとの登録件数（行数）を表示しています。緑色は正常、赤色はデータ不足です。")
@@ -106,28 +103,30 @@ if uploaded_file is not None:
         functional_subjects = df_subjects[df_subjects["種類"] == "functional"]["科目名"].astype(str).str.strip().tolist()
         required_subjects = financial_subjects + functional_subjects
         
-        # KPIカテゴリ別の辞書構造を再構築
         kpi_categories = {}
         all_kpis = {}
         for _, row in df_kpis.iterrows():
             cat = str(row["カテゴリ"]).strip()
             kpi_name = str(row["KPI名"]).strip()
-            
             kpi_info = {
                 "formula": str(row["計算式"]),
                 "unit": str(row["単位"]),
                 "meaning": str(row["経営的な意味"]),
                 "benchmark": str(row["判断の目安・基準"]),
-                "calc_str": str(row["計算ロジック"]) # 文字列としてのロジック
+                "calc_str": str(row["計算ロジック"])
             }
-            
             if cat not in kpi_categories:
                 kpi_categories[cat] = {}
             kpi_categories[cat][kpi_name] = kpi_info
             all_kpis[kpi_name] = kpi_info
 
-        # 単位自動判定ルールのマッピング作成
         unit_rules = dict(zip(df_units["判定キーワード"].astype(str), df_units["単位"].astype(str)))
+
+        # --- 選択状態を保持するためのSession State初期化 ---
+        if "item1_cat" not in st.session_state:
+            st.session_state["item1_cat"] = list(kpi_categories.keys())[0] if kpi_categories else "財務データ"
+        if "item2_cat" not in st.session_state:
+            st.session_state["item2_cat"] = list(kpi_categories.keys())[0] if kpi_categories else "財務データ"
 
         # 3. 動的関数定義
         def get_unit(item_name):
@@ -153,23 +152,46 @@ if uploaded_file is not None:
             unit = get_unit(item_name)
             return f"{item_name} ({unit})" if unit else item_name
 
-        def select_item_ui(key_prefix, title_text, default_cat_idx=0, default_item_idx=0, allow_none=False):
+        def select_item_ui(key_prefix, title_text, allow_none=False):
             st.markdown(f"<span style='font-size:13px; font-weight:bold;'>{title_text}</span>", unsafe_allow_html=True)
-            categories_list = list(kpi_categories.keys()) + ["財務データ(勘定科目)", "機能データ"]
+            categories_list = list(kpi_categories.keys()) + ["財務データ", "機能データ"]
             if allow_none:
                 categories_list = ["(選択なし)"] + categories_list
-                default_cat_idx = default_cat_idx + 1 if default_cat_idx is not None else 0
             
+            # (選択なし)を許可しない画面で、以前の状態が(選択なし)だった場合の安全なリセット処理
+            if not allow_none and st.session_state.get(f"{key_prefix}_cat") == "(選択なし)":
+                st.session_state[f"{key_prefix}_cat"] = list(kpi_categories.keys())[0]
+            
+            # セッションステートの値が現在のリストに存在しない場合のフェイルセーフ
+            if st.session_state.get(f"{key_prefix}_cat") not in categories_list:
+                st.session_state[f"{key_prefix}_cat"] = categories_list[0] if categories_list else ""
+
             col_c, col_i = st.columns([1, 1.8])
             with col_c:
-                cat = st.selectbox("大分類", categories_list, index=default_cat_idx, key=f"{key_prefix}_cat", label_visibility="collapsed")
+                # カテゴリが変更されたら詳細項目の履歴をリセットしてエラーを防ぐコールバック
+                def on_cat_change():
+                    if f"{key_prefix}_item" in st.session_state:
+                        del st.session_state[f"{key_prefix}_item"]
+                
+                cat = st.selectbox("大分類", categories_list, key=f"{key_prefix}_cat", label_visibility="collapsed", on_change=on_cat_change)
+            
             if cat == "(選択なし)":
-                with col_i: st.selectbox("詳細", ["-"], disabled=True, key=f"{key_prefix}_item", label_visibility="collapsed")
+                with col_i: 
+                    st.selectbox("詳細", ["-"], disabled=True, key=f"{key_prefix}_item_disabled", label_visibility="collapsed")
                 return None
+            
             with col_i:
-                options = financial_subjects if cat == "財務データ(勘定科目)" else functional_subjects if cat == "機能データ" else list(kpi_categories[cat].keys())
-                safe_idx = default_item_idx if default_item_idx < len(options) else 0
-                item = st.selectbox("詳細項目", options, index=safe_idx, key=f"{key_prefix}_item", label_visibility="collapsed")
+                options = financial_subjects if cat == "財務データ" else functional_subjects if cat == "機能データ" else list(kpi_categories[cat].keys())
+                
+                # 詳細項目の初期値設定（初回起動時、またはカテゴリ変更時）
+                if f"{key_prefix}_item" not in st.session_state or st.session_state[f"{key_prefix}_item"] not in options:
+                    if key_prefix == "item2" and len(options) > 1:
+                        st.session_state[f"{key_prefix}_item"] = options[1]
+                    else:
+                        st.session_state[f"{key_prefix}_item"] = options[0] if options else ""
+                        
+                item = st.selectbox("詳細項目", options, key=f"{key_prefix}_item", label_visibility="collapsed")
+                
             return item
 
         def display_kpi_explanation(item_name, label_text="💡 指標解説"):
@@ -192,13 +214,12 @@ if uploaded_file is not None:
                 </div>
                 """, unsafe_allow_html=True)
 
-        # 4. 実績データ(縦持ち)のチェックとクリーニング
+        # 4. 実績データのクリーニングと計算
         df_data["勘定科目"] = df_data["勘定科目"].astype(str).str.strip()
         
         if st.sidebar.button("📊 登録データ件数を確認する"):
             show_data_summary_dialog(df_data, required_subjects)
 
-        # 縦持ちから横持ち（マトリクス）へ変換
         df_pivot = df_data.pivot_table(index=["年度", "施設名"], columns="勘定科目", values="金額", aggfunc="sum").reset_index()
         
         for sub in required_subjects:
@@ -206,34 +227,37 @@ if uploaded_file is not None:
                 df_pivot[sub] = np.nan
 
         # 施設選択フィルター
+        st.sidebar.markdown("---")
         all_facilities = df_pivot["施設名"].unique().tolist()
         selected_facilities = st.sidebar.multiselect("比較する施設を選択", options=all_facilities, default=all_facilities)
         filtered_df = df_pivot[df_pivot["施設名"].isin(selected_facilities)].copy()
 
-        # 【★ここを修正★】Excelの数式（ロジック文字列）を安全に実行してKPIを一括計算
+        # 表示ビュー切り替え（サイドバーへ移動）
+        st.sidebar.markdown("---")
+        view_mode = st.sidebar.radio(
+            "📊 ダッシュボード表示ビュー切り替え",
+            ["📈 ２指標の時系列比較", "📊 ２指標相関分析"]
+        )
+
+        # KPI一括計算
         for kpi_name, kpi_info in all_kpis.items():
             try:
-                # eval内部の 'df' に filtered_df を、'np' に numpy を割り当てて計算を成功させます
                 filtered_df[kpi_name] = eval(kpi_info["calc_str"], {"df": filtered_df, "np": np})
-            except Exception as eval_e:
+            except Exception:
                 filtered_df[kpi_name] = np.nan
 
-        # 5. ラジオボタンによる「時系列」と「散布図」の切り替えスイッチ
-        view_mode = st.radio(
-            "📊 ダッシュボード表示ビュー切り替え",
-            ["📈 ２指標の時系列比較 (ダブルY軸・右凡例集約型)", "📊 ２指標相関分析（マトリクス散布図）"],
-            horizontal=True
-        )
 
         # ====================================================
         # ビュー1: ２指標の時系列比較
         # ====================================================
-        if view_mode == "📈 ２指標の時系列比較 (ダブルY軸・右凡例集約型)":
+        if view_mode == "📈 ２指標の時系列比較":
             col_sel1, col_sel2 = st.columns(2)
             with col_sel1:
-                selected_trend_item1 = select_item_ui("trend1", "▼ 指標1（主軸：実線）を選択", default_cat_idx=0, default_item_idx=0)
+                # key_prefix を "item1" で固定し、散布図の "Y軸" と連携させる
+                selected_trend_item1 = select_item_ui("item1", "▼ 指標1（主軸：実線）を選択", allow_none=False)
             with col_sel2:
-                selected_trend_item2 = select_item_ui("trend2", "▼ 指標2（第2軸：点線）を選択", default_cat_idx=None, default_item_idx=0, allow_none=True)
+                # key_prefix を "item2" で固定し、散布図の "X軸" と連携させる
+                selected_trend_item2 = select_item_ui("item2", "▼ 指標2（第2軸：点線）を選択", allow_none=True)
 
             filtered_df["年度_str"] = filtered_df["年度"].astype(str)
             trend_plot_df = filtered_df.sort_values(by="年度").copy()
@@ -248,7 +272,6 @@ if uploaded_file is not None:
                 fac_df = trend_plot_df[trend_plot_df["施設名"] == fac]
                 color = facility_colors[fac]
                 
-                # 指標1（実線）
                 fig.add_trace(
                     go.Scatter(
                         x=fac_df["年度_str"], y=fac_df[selected_trend_item1],
@@ -261,7 +284,6 @@ if uploaded_file is not None:
                     secondary_y=False
                 )
                 
-                # 指標2（点線）
                 if selected_trend_item2:
                     fig.add_trace(
                         go.Scatter(
@@ -279,7 +301,6 @@ if uploaded_file is not None:
             if selected_trend_item2:
                 title_text += f" と {selected_trend_item2}"
 
-            # レイアウト調整：凡例を「右側」へ戻し、高さを出して縦長（傾き強調）に設定
             fig.update_layout(
                 title=title_text,
                 title_font=dict(size=14, family="Segoe UI"),
@@ -287,7 +308,7 @@ if uploaded_file is not None:
                 xaxis_title="年度",
                 yaxis_title=get_axis_label(selected_trend_item1),
                 template="plotly_white",
-                height=500, # 縦長にして傾きを分かりやすく調整
+                height=500,
                 legend=dict(
                     orientation="v",
                     yanchor="top", y=1,
@@ -312,13 +333,16 @@ if uploaded_file is not None:
             with col_desc1: display_kpi_explanation(selected_trend_item1, "💡 指標1解説")
             with col_desc2: display_kpi_explanation(selected_trend_item2, "💡 指標2解説")
 
+
         # ====================================================
         # ビュー2: ２指標相関分析（散布図）
         # ====================================================
         else:
             col_sel_y, col_sel_x = st.columns(2)
-            with col_sel_y: y_item = select_item_ui("scatter_y", "▼ Y軸（縦軸）の設定", default_cat_idx=0, default_item_idx=0)
-            with col_sel_x: x_item = select_item_ui("scatter_x", "▼ X軸（横軸）の設定", default_cat_idx=0, default_item_idx=1)
+            with col_sel_y: 
+                y_item = select_item_ui("item1", "▼ Y軸（縦軸）の設定", allow_none=False)
+            with col_sel_x: 
+                x_item = select_item_ui("item2", "▼ X軸（横軸）の設定", allow_none=False)
 
             col_years, _ = st.columns([2, 1])
             with col_years:
@@ -329,7 +353,7 @@ if uploaded_file is not None:
             scatter_df["年度_str"] = scatter_df["年度"].astype(str)
             valid_scatter_df = scatter_df.dropna(subset=[x_item, y_item]).copy()
 
-            if len(valid_scatter_df) > 0:
+            if len(valid_scatter_df) > 0 and x_item and y_item:
                 x_label, y_label = get_axis_label(x_item), get_axis_label(y_item)
                 valid_scatter_df["X軸_hover"] = valid_scatter_df[x_item].apply(lambda v: format_value(v, x_item))
                 valid_scatter_df["Y軸_hover"] = valid_scatter_df[y_item].apply(lambda v: format_value(v, y_item))
