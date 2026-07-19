@@ -7,7 +7,7 @@ from plotly.subplots import make_subplots
 
 # ページの設定
 st.set_page_config(
-    page_title="病院経営ダッシュボード",
+    page_title="病院経営KPIダッシュボード",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -56,20 +56,19 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- サイドバーの固定基本表示 ---
-st.sidebar.markdown('<div class="sidebar-title">🏥 病院経営 ダッシュボード</div>', unsafe_allow_html=True)
-# st.sidebar.markdown('<div class="sidebar-desc">Excelから定義マスターと実績データを一括読み込みし、多角的な経営分析を行います。</div>', unsafe_allow_html=True)
-# st.sidebar.header("データのアップロード と 設定")
+st.sidebar.markdown('<div class="sidebar-title">🏥 病院経営 KPIダッシュボード</div>', unsafe_allow_html=True)
+st.sidebar.markdown('<div class="sidebar-desc">Excelから定義マスターと実績データを一括読み込みし、多角的な経営分析を行います。</div>', unsafe_allow_html=True)
+st.sidebar.header("データのアップロード と 設定")
 
 uploaded_file = st.sidebar.file_uploader(
-    "▼Excelファイルをアップロード", 
+    "定義・データを含むExcelファイルをアップロード", 
     type=["xlsx"],
     help="data, subjects, kpi_categories, units の4シートを含むエクセルを選択してください。"
 )
 
-# ポップアップ用関数（データ登録状況確認）
 @st.dialog("🔍 登録データ件数の確認", width="large")
 def show_data_summary_dialog(df_raw, req_subjects):
-    st.write("アップロードされたデータの科目ごとの登録件数（行数）を表示しています。緑色は最大値（揃っている）、黄色は一部不足、赤色はデータなしを示します。")
+    st.write("アップロードされたデータの科目ごとの登録件数（行数）を表示しています。緑色は正常、赤色はデータ不足です。")
     summary_pivot = df_raw.pivot_table(
         index="勘定科目", columns="施設名", values="金額", aggfunc="count", fill_value=0
     )
@@ -78,20 +77,10 @@ def show_data_summary_dialog(df_raw, req_subjects):
             summary_pivot.loc[sub] = 0
     summary_pivot = summary_pivot.reindex(req_subjects + [idx for idx in summary_pivot.index if idx not in req_subjects])
     
-    # --- 修正部分：行ごとの最大値を基準に色を判定する関数 ---
-    def color_cells_by_row_max(row):
-        row_max = row.max()
-        colors = []
-        for val in row:
-            if val == 0:
-                colors.append('background-color: #ffccd5; color: #333;') # 赤色 (データなし)
-            elif val < row_max:
-                colors.append('background-color: #fff2cc; color: #333;') # 黄色 (0より大きく、最大値未満)
-            else:
-                colors.append('background-color: #e2f0d9; color: #333;') # 緑色 (最大値)
-        return colors
+    def color_missing_cells(val):
+        return f"background-color: {'#ffccd5' if val == 0 else '#e2f0d9'}; color: #333;"
         
-    st.dataframe(summary_pivot.style.apply(color_cells_by_row_max, axis=1), use_container_width=True)
+    st.dataframe(summary_pivot.style.map(color_missing_cells), use_container_width=True)
 
 
 # --- メインロジック ---
@@ -169,14 +158,17 @@ if uploaded_file is not None:
             if allow_none:
                 categories_list = ["(選択なし)"] + categories_list
             
+            # (選択なし)を許可しない画面で、以前の状態が(選択なし)だった場合の安全なリセット処理
             if not allow_none and st.session_state.get(f"{key_prefix}_cat") == "(選択なし)":
                 st.session_state[f"{key_prefix}_cat"] = list(kpi_categories.keys())[0]
             
+            # セッションステートの値が現在のリストに存在しない場合のフェイルセーフ
             if st.session_state.get(f"{key_prefix}_cat") not in categories_list:
                 st.session_state[f"{key_prefix}_cat"] = categories_list[0] if categories_list else ""
 
             col_c, col_i = st.columns([1, 1.8])
             with col_c:
+                # カテゴリが変更されたら詳細項目の履歴をリセットしてエラーを防ぐコールバック
                 def on_cat_change():
                     if f"{key_prefix}_item" in st.session_state:
                         del st.session_state[f"{key_prefix}_item"]
@@ -191,6 +183,7 @@ if uploaded_file is not None:
             with col_i:
                 options = financial_subjects if cat == "財務データ" else functional_subjects if cat == "機能データ" else list(kpi_categories[cat].keys())
                 
+                # 詳細項目の初期値設定（初回起動時、またはカテゴリ変更時）
                 if f"{key_prefix}_item" not in st.session_state or st.session_state[f"{key_prefix}_item"] not in options:
                     if key_prefix == "item2" and len(options) > 1:
                         st.session_state[f"{key_prefix}_item"] = options[1]
@@ -239,20 +232,12 @@ if uploaded_file is not None:
         selected_facilities = st.sidebar.multiselect("比較する施設を選択", options=all_facilities, default=all_facilities)
         filtered_df = df_pivot[df_pivot["施設名"].isin(selected_facilities)].copy()
 
-        # 表示ビュー切り替え
+        # 表示ビュー切り替え（サイドバーへ移動）
         st.sidebar.markdown("---")
         view_mode = st.sidebar.radio(
             "📊 ダッシュボード表示ビュー切り替え",
             ["📈 ２指標の時系列比較", "📊 ２指標相関分析"]
         )
-
-        # 【追加】時系列グラフの場合のみ、グラフ種類の選択を表示
-        chart_type1, chart_type2 = "折れ線グラフ", "折れ線グラフ"
-        if view_mode == "📈 ２指標の時系列比較":
-            st.sidebar.markdown("---")
-            st.sidebar.markdown('<div class="sidebar-title">📈 グラフ種類の選択</div>', unsafe_allow_html=True)
-            chart_type1 = st.sidebar.radio("指標1 (主軸)", ["折れ線グラフ", "棒グラフ"], horizontal=True)
-            chart_type2 = st.sidebar.radio("指標2 (第2軸)", ["折れ線グラフ", "棒グラフ"], horizontal=True)
 
         # KPI一括計算
         for kpi_name, kpi_info in all_kpis.items():
@@ -268,9 +253,11 @@ if uploaded_file is not None:
         if view_mode == "📈 ２指標の時系列比較":
             col_sel1, col_sel2 = st.columns(2)
             with col_sel1:
-                selected_trend_item1 = select_item_ui("item1", "▼ 指標1（主軸）を選択", allow_none=False)
+                # key_prefix を "item1" で固定し、散布図の "Y軸" と連携させる
+                selected_trend_item1 = select_item_ui("item1", "▼ 指標1（主軸：実線）を選択", allow_none=False)
             with col_sel2:
-                selected_trend_item2 = select_item_ui("item2", "▼ 指標2（第2軸）を選択", allow_none=True)
+                # key_prefix を "item2" で固定し、散布図の "X軸" と連携させる
+                selected_trend_item2 = select_item_ui("item2", "▼ 指標2（第2軸：点線）を選択", allow_none=True)
 
             filtered_df["年度_str"] = filtered_df["年度"].astype(str)
             trend_plot_df = filtered_df.sort_values(by="年度").copy()
@@ -284,55 +271,31 @@ if uploaded_file is not None:
             for fac in unique_facilities:
                 fac_df = trend_plot_df[trend_plot_df["施設名"] == fac]
                 color = facility_colors[fac]
-
-                # --- 修正: 指標1の値が 0 の場合は NaN に置換し、描画をスキップする ---
-                y_val1 = fac_df[selected_trend_item1].replace(0, np.nan)
                 
-                # 【追加】指標1の描画処理（折れ線・棒グラフの切り替え）
-                if chart_type1 == "折れ線グラフ":
-                    trace1 = go.Scatter(
-                        x=fac_df["年度_str"], y=y_val1,
+                fig.add_trace(
+                    go.Scatter(
+                        x=fac_df["年度_str"], y=fac_df[selected_trend_item1],
                         name=f"{fac}: {selected_trend_item1}",
                         mode="lines+markers",
                         line=dict(width=3, dash='solid', color=color),
                         marker=dict(size=7),
-                        connectgaps=False, # NaN（データなし）の前後で線を繋がず途切れさせる
                         hovertemplate=f"施設: {fac}<br>年度: %{{x}}<br>{selected_trend_item1}: %{{y}}<extra></extra>"
-                    )
-                else:
-                    trace1 = go.Bar(
-                        x=fac_df["年度_str"], y=y_val1,
-                        name=f"{fac}: {selected_trend_item1}",
-                        marker_color=color,
-                        opacity=0.75,
-                        hovertemplate=f"施設: {fac}<br>年度: %{{x}}<br>{selected_trend_item1}: %{{y}}<extra></extra>"
-                    )
-                fig.add_trace(trace1, secondary_y=False)
+                    ),
+                    secondary_y=False
+                )
                 
-                # 【追加】指標2の描画処理（折れ線・棒グラフの切り替え）
                 if selected_trend_item2:
-                    # --- 修正: 指標2の値が 0 の場合も NaN に置換 ---
-                    y_val2 = fac_df[selected_trend_item2].replace(0, np.nan)
-                    
-                    if chart_type2 == "折れ線グラフ":
-                        trace2 = go.Scatter(
-                            x=fac_df["年度_str"], y=y_val2,
+                    fig.add_trace(
+                        go.Scatter(
+                            x=fac_df["年度_str"], y=fac_df[selected_trend_item2],
                             name=f"{fac}: {selected_trend_item2}",
                             mode="lines+markers",
                             line=dict(width=2, dash='dot', color=color),
                             marker=dict(size=7),
-                            connectgaps=False, # NaN（データなし）の前後で線を繋がず途切れさせる
                             hovertemplate=f"施設: {fac}<br>年度: %{{x}}<br>{selected_trend_item2}: %{{y}}<extra></extra>"
-                        )
-                    else:
-                        trace2 = go.Bar(
-                            x=fac_df["年度_str"], y=y_val2,
-                            name=f"{fac}: {selected_trend_item2}",
-                            marker_color=color,
-                            opacity=0.6,
-                            hovertemplate=f"施設: {fac}<br>年度: %{{x}}<br>{selected_trend_item2}: %{{y}}<extra></extra>"
-                        )
-                    fig.add_trace(trace2, secondary_y=True)
+                        ),
+                        secondary_y=True
+                    )
 
             title_text = f"【推移比較】 {selected_trend_item1}"
             if selected_trend_item2:
@@ -346,7 +309,6 @@ if uploaded_file is not None:
                 yaxis_title=get_axis_label(selected_trend_item1),
                 template="plotly_white",
                 height=500,
-                barmode='group', # 複数施設の棒グラフが並んで表示されるように設定
                 legend=dict(
                     orientation="v",
                     yanchor="top", y=1,
