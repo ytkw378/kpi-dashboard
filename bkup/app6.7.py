@@ -16,45 +16,29 @@ st.set_page_config(
 st.markdown("""
 <style>
     .block-container {
-        padding-top: 3.0rem !important; 
+        padding-top: 3.0rem !important; /* メッセージが見切れないように余白を拡張 */
         padding-bottom: 1.0rem !important;
         padding-left: 2.0rem !important;
         padding-right: 2.0rem !important;
     }
     .sidebar-title {
-        font-size: 15px !important;
+        font-size: 16px !important;
         font-weight: bold;
         color: #1e3a8a;
-        margin-top: 0.3rem !important;
-        margin-bottom: 0.3rem !important;
-        line-height: 1.5 !important; /* 文字被りを防ぐために行間を確保 */
-        display: block;
+        margin-bottom: 5px;
+        line-height: 1.2;
     }
     .sidebar-desc {
-        font-size: 11.5px !important;
+        font-size: 11px !important;
         color: #4b5563;
-        line-height: 1.5 !important; /* 文字被りを防ぐために行間を確保 */
-        margin-bottom: 0.2rem !important;
-        display: block;
+        line-height: 1.4;
+        margin-bottom: 15px;
     }
     [data-testid="stSidebar"] * {
         font-size: 13px !important;
     }
-    
-    /* ▼▼ サイドバー専用の余白圧縮設定 ▼▼ */
-    /* 0.1remだと重なるため、0.5rem（約8px）に緩和して安全な隙間を確保 */
-    [data-testid="stSidebar"] div[data-testid="stVerticalBlock"] {
-        gap: 0.5rem !important; 
-    }
-    /* サイドバー内の区切り線（---）の上下余白 */
-    [data-testid="stSidebar"] hr {
-        margin-top: 0.3rem !important;
-        margin-bottom: 0.3rem !important;
-    }
-    /* ▲▲ ここまで ▲▲ */
-    
     .stSelectbox {
-        margin-bottom: 0px !important; /* マイナスマージンを廃止して重なりを防止 */
+        margin-bottom: -10px !important;
     }
     div[data-testid="stExpander"] {
         margin-bottom: 5px !important;
@@ -62,14 +46,11 @@ st.markdown("""
     div[data-testid="stHorizontalBlock"] {
         gap: 10px !important;
     }
-    
-    /* ラジオボタンの背景枠と余白をスリム化 */
     div[role="radiogroup"] {
         background-color: #f3f4f6;
-        padding: 6px 10px !important;
+        padding: 8px 12px;
         border-radius: 8px;
-        margin-top: 2px !important;
-        margin-bottom: 2px !important;
+        margin-bottom: 15px;
     }
 </style>
 """, unsafe_allow_html=True)
