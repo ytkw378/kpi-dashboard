@@ -21,32 +21,36 @@ st.markdown("""
         padding-left: 2.0rem !important;
         padding-right: 2.0rem !important;
     }
-    .sidebar-title {
-        font-size: 15px !important;
+            
+    /* ▼▼ 修正： [data-testid="stSidebar"] を付けて優先度を上げ、上書きを防ぐ ▼▼ */
+    [data-testid="stSidebar"] .sidebar-title {
+        font-size: 18px !important;     /* 15pxから+3px大きく */
         font-weight: bold;
-        color: #1e3a8a;
+        color: #3b82f6 !important;      /* ライト・ダーク両方で視認性が高い鮮やかなブルーへ変更 */
         margin-top: 0.3rem !important;
         margin-bottom: 0.3rem !important;
-        line-height: 1.5 !important; /* 文字被りを防ぐために行間を確保 */
+        line-height: 1.5 !important;
         display: block;
     }
-    .sidebar-desc {
+    [data-testid="stSidebar"] .sidebar-desc {
         font-size: 11.5px !important;
-        color: #4b5563;
-        line-height: 1.5 !important; /* 文字被りを防ぐために行間を確保 */
+        color: var(--text-color) !important;    /* 環境に合わせて自動で切り替わるテキスト色を使用 */
+        line-height: 1.5 !important;
         margin-bottom: 0.2rem !important;
         display: block;
+        opacity: 0.8;       /* 少しだけ透明にしてサブテキスト感を出す */
     }
+    
+    /* サイドバーの基本フォントサイズ（上記2つ以外に適用される） */
     [data-testid="stSidebar"] * {
         font-size: 13px !important;
     }
     
+    
     /* ▼▼ サイドバー専用の余白圧縮設定 ▼▼ */
-    /* 0.1remだと重なるため、0.5rem（約8px）に緩和して安全な隙間を確保 */
     [data-testid="stSidebar"] div[data-testid="stVerticalBlock"] {
         gap: 0.5rem !important; 
     }
-    /* サイドバー内の区切り線（---）の上下余白 */
     [data-testid="stSidebar"] hr {
         margin-top: 0.3rem !important;
         margin-bottom: 0.3rem !important;
@@ -54,7 +58,7 @@ st.markdown("""
     /* ▲▲ ここまで ▲▲ */
     
     .stSelectbox {
-        margin-bottom: 0px !important; /* マイナスマージンを廃止して重なりを防止 */
+        margin-bottom: 0px !important;
     }
     div[data-testid="stExpander"] {
         margin-bottom: 5px !important;
@@ -65,14 +69,17 @@ st.markdown("""
     
     /* ラジオボタンの背景枠と余白をスリム化 */
     div[role="radiogroup"] {
-        background-color: #f3f4f6;
+        /* ダーク・ライトモードで自動的に切り替わる背景色変数を使用 */
+        background-color: var(--secondary-background-color) !important;
         padding: 6px 10px !important;
         border-radius: 8px;
         margin-top: 2px !important;
         margin-bottom: 2px !important;
+        border: 1px solid rgba(128, 128, 128, 0.2); /* 輪郭をうっすらつけて視認性を向上 */
     }
 </style>
 """, unsafe_allow_html=True)
+
 
 # --- サイドバーの固定基本表示 ---
 st.sidebar.markdown('<div class="sidebar-title">🏥 病院経営 ダッシュボード</div>', unsafe_allow_html=True)
@@ -220,14 +227,14 @@ if uploaded_file is not None:
                 
             return item
 
-        def display_kpi_explanation(item_name, label_text="💡 指標解説"):
+        def display_kpi_explanation(item_name, label_text="💡 指標"):
             if not item_name: return
             info = all_kpis.get(item_name)
             if info:
                 st.markdown(f"""
                 <div style="background-color: #f0f4f8; padding: 10px 14px; border-radius: 6px; border-left: 4px solid #1e3b8b; margin-top: 10px; margin-bottom: 5px;">
                     <div style="font-weight: bold; color: #1e3b8b; font-size: 13px; margin-bottom: 4px;">{label_text}: {item_name}</div>
-                    <div style="font-size: 11px; margin-bottom: 3px; color: #374151;"><strong>計算式:</strong> <code>{info['formula']}</code></div>
+                    <div style="font-size: 13px; margin-bottom: 3px; color: #374151;"><strong>計算式:</strong> <code>{info['formula']}</code></div>
                     <div style="font-size: 11px; margin-bottom: 3px; color: #374151; line-height: 1.4;"><strong>経営的な意味:</strong> {info['meaning']}</div>
                     <div style="font-size: 11px; color: #374151; line-height: 1.4;"><strong>判断の目安・基準:</strong> {info['benchmark']}</div>
                 </div>
@@ -235,7 +242,7 @@ if uploaded_file is not None:
             else:
                 st.markdown(f"""
                 <div style="background-color: #f9fafb; padding: 10px 14px; border-radius: 6px; border-left: 4px solid #6b7280; margin-top: 10px; margin-bottom: 5px;">
-                    <div style="font-weight: bold; color: #4b5563; font-size: 13px; margin-bottom: 4px;">📊 基礎データ解説: {item_name}</div>
+                    <div style="font-weight: bold; color: #4b5563; font-size: 13px; margin-bottom: 4px;">📊 データ: {item_name}</div>
                     <div style="font-size: 11px; color: #4b5563; line-height: 1.4;"><strong>経営的な意味:</strong> 実績値（生データ）です。時系列比較や規模確認に活用します。</div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -387,8 +394,8 @@ if uploaded_file is not None:
             st.plotly_chart(fig, use_container_width=True)
 
             col_desc1, col_desc2 = st.columns(2)
-            with col_desc1: display_kpi_explanation(selected_trend_item1, "💡 指標1解説")
-            with col_desc2: display_kpi_explanation(selected_trend_item2, "💡 指標2解説")
+            with col_desc1: display_kpi_explanation(selected_trend_item1, "💡指標1")
+            with col_desc2: display_kpi_explanation(selected_trend_item2, "💡指標2")
 
 
         # ====================================================
@@ -435,8 +442,8 @@ if uploaded_file is not None:
                 st.plotly_chart(fig_scatter, use_container_width=True)
                 
                 col_exp_y, col_exp_x = st.columns(2)
-                with col_exp_y: display_kpi_explanation(y_item, "💡 Y軸（縦軸）指標解説")
-                with col_exp_x: display_kpi_explanation(x_item, "💡 X軸（横軸）指標解説")
+                with col_exp_y: display_kpi_explanation(y_item, "💡 Y軸（縦軸）指標")
+                with col_exp_x: display_kpi_explanation(x_item, "💡 X軸（横軸）指標")
             else:
                 st.warning("選択された年度または指標で計算可能なデータが存在しません。")
 
